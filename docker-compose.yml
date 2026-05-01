@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: bot_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: bot_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Auth Service
+  auth_service:
+    build:
+      context: ./auth_service
+      dockerfile: Dockerfile
+    container_name: auth_service
+    ports:
+      - "8000:8000"
+    environment:
+      - JWT_SECRET=super-secret-key-please-change-in-production-123456
+      - DATABASE_URL=sqlite+aiosqlite:///auth_service.db
+    volumes:
+      - ./auth_service:/app
+      - auth_db:/app/data
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Bot Service API
+  bot_api:
+    build:
+      context: ./bot_service
+      dockerfile: Dockerfile
+    container_name: bot_api
+    ports:
+      - "8001:8001"
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - JWT_SECRET=super-secret-key-please-change-in-production-123456
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      - ./bot_service:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+  # Telegram Bot
+  bot:
+    build:
+      context: ./bot_service
+      dockerfile: Dockerfile
+    container_name: telegram_bot
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - JWT_SECRET=super-secret-key-please-change-in-production-123456
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      - ./bot_service:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: uv run python bot_runner.py
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./bot_service
+      dockerfile: Dockerfile
+    container_name: celery_worker
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - JWT_SECRET=super-secret-key-please-change-in-production-123456
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    volumes:
+      - ./bot_service:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: uv run celery -A app.infra.celery_app worker --loglevel=info --concurrency=2
+
+volumes:
+  redis_data:
+  rabbitmq_data:
+  auth_db:

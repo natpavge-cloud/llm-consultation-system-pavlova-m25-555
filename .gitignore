@@ -1,0 +1,37 @@
+# Секретики))
+.env
+auth_service/.env
+bot_service/.env
+
+# Базы данных
+*.sqlite3
+*.db
+auth_service/app.db
+auth_service/auth.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+PYTHON_ENV/
+.ipynb_checkpoints/
+
+# Кэши тестов и отчёты о покрытии
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+
+# Docker
+.docker_temp/
+data/
+
+# OS
+.DS_Store
+Thumbs.db
