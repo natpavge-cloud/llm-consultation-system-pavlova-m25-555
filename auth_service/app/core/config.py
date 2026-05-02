@@ -24,6 +24,5 @@ class Settings(BaseSettings):
         case_sensitive=True
     )
 
-
 # Глобальный объект настроек
 settings = Settings()
